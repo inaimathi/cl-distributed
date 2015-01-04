@@ -6,7 +6,7 @@
 (defclass edit () ((ix :reader ix :initarg :ix)))
 (defclass insertion (edit)
   ((len :reader len :initarg :len)
-   (str :reader str :initarg :str)))
+   (text :reader text :initarg :text)))
 (defclass deletion (edit)
   ((ct :reader ct :initarg :ct)))
 
@@ -15,30 +15,30 @@
 (defmethod new-deletion ((old deletion) &key ix ct)
   (make-instance 'deletion :ix (or ix (ix old)) :ct (or ct (ct old))))
 
-(defmethod mk-insertion ((ix integer) (str string))
-  (make-instance 'insertion :ix ix :len (length str) :str str))
-(defmethod new-insertion ((old insertion) &key ix str)
+(defmethod mk-insertion ((ix integer) (text string))
+  (make-instance 'insertion :ix ix :len (length text) :text text))
+(defmethod new-insertion ((old insertion) &key ix text)
   (make-instance 
    'insertion
    :ix (or ix (ix old))
-   :len (if str (length str) (len old))
-   :str (or str (str old))))
+   :len (if text (length text) (len old))
+   :text (or text (text old))))
 
 ;;;;;;;;;; Basic history methods
-(defmethod apply-payload ((str string) (ins insertion))
+(defmethod apply-payload ((text string) (ins insertion))
   (if (zerop (ix ins))
-      (concatenate 'string (str ins) str)
+      (concatenate 'string (text ins) text)
       (concatenate 'string 
-       (subseq str 0 (ix ins)) 
-       (str ins)
-       (subseq str (ix ins)))))
+       (subseq text 0 (ix ins)) 
+       (text ins)
+       (ignore-errors (subseq text (ix ins))))))
 
-(defmethod apply-payload ((str string) (del deletion))
+(defmethod apply-payload ((text string) (del deletion))
   (if (zerop (ix del))
-      (subseq str (ix del))
+      (subseq text (ix del))
       (concatenate 'string 
-	(subseq str 0 (ix del))
-	(ignore-errors (subseq str (+ (ix del) (ct del)))))))
+	(subseq text 0 (ix del))
+	(ignore-errors (subseq text (+ (ix del) (ct del)))))))
 
 (defmethod reconcile ((a deletion) (b deletion))
   (cond ((eclipsed-by? a b) nil)
