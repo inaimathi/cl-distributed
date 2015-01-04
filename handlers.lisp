@@ -100,6 +100,10 @@
 		       ("+input"
 			;; (console.log "INSERTION" change)
 			(doc/insert! (@ change from ch) (@ change text 0)))
+		       ("cut"
+			(doc/delete! (@ change from ch) (length (@ change removed 0))))
+		       ("paste"
+			(doc/insert! (@ change from ch) (@ change text 0)))
 		       ("server-synch" nil)
 		       (t (console.log "UNSUPPORTED CHANGE" change)))))))))))))
 
