@@ -13,7 +13,8 @@
     (:body . ,(current *arc*))
     (:user . ,(lookup :user session))))
 
-(defun json-plist (&rest plist) (cl-json:encode-json-plist-to-string plist))
+(defun json-plist (&rest plist)
+  (cl-json:encode-json-plist-to-string plist))
 
 (define-json-handler (document/insert) ((id :integer (>= id 0)) (ix :integer (>= ix 0)) (text :string (> (length text) 0)))
   (update! *arc* id (mk-insertion ix text))
@@ -117,15 +118,17 @@
 		   (lambda (mirror change)
 		     (case (@ change origin)
 		       ("+delete"
-			;; (console.log "DELETION" change)
-			(doc/delete! (@ change from ch) (length (@ change removed 0))))
+			(console.log "DELETION" change)
+			(doc/delete! (@ change from ch) (length (join (@ change removed) #\newline))))
 		       ("+input"
-			;; (console.log "INSERTION" change)
-			(doc/insert! (@ change from ch) (@ change text 0)))
+			(console.log "INSERTION" change)
+			(doc/insert! (@ change from ch) (join (@ change text) #\newline)))
 		       ("cut"
-			(doc/delete! (@ change from ch) (length (@ change removed 0))))
+			(console.log "CUT" change)
+			(doc/delete! (@ change from ch) (length (join (@ change removed) #\newline))))
 		       ("paste"
-			(doc/insert! (@ change from ch) (@ change text 0)))
+			(console.log "PASTE" change)
+			(doc/insert! (@ change from ch) (join (@ change text) #\newline)))
 		       ("server-synch" nil)
 		       (t (console.log "UNSUPPORTED CHANGE" change)))))))))))))
 
