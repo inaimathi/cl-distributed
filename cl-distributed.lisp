@@ -72,20 +72,12 @@
       (bump a (len b))
       a))
 
+;;;;;;;;;; Minor internal utility
 (defmethod bump ((ins insertion) (delta integer))
   (new-insertion ins :ix (+ (ix ins) delta)))
 (defmethod bump ((del deletion) (delta integer))
   (new-deletion del :ix (+ (ix del) delta)))
 
-;; (update! *arc* 0 (mk-insertion 0 "Testing"))
-;; (update! *arc* 0 (mk-insertion 0 "Testicles"))
-;; (update! *arc* 2 (mk-deletion 4 3))
-;; (update! *arc* 2 (mk-insertion 7 " "))
-;; (update! *arc* 2 (mk-deletion 11 5))
-
-;; projects to "Test Test"
-
-;;;;;;;;;; Minor internal utility
 (defmethod eclipsed-by? ((a deletion) (b deletion))
   (>= (+ (ix b) (ct b)) (+ (ix a) (ct a))
       (ix a) (ix b)))
@@ -103,3 +95,11 @@
 
 (defmethod irrelevant? ((a deletion) (b edit))
   (>= (ix b) (+ (ix a) (ct a))))
+
+;; (update! *arc* 0 (mk-insertion 0 "Testing"))
+;; (update! *arc* 0 (mk-insertion 0 "Testicles"))
+;; (update! *arc* 2 (mk-deletion 4 3))
+;; (update! *arc* 2 (mk-insertion 7 " "))
+;; (update! *arc* 2 (mk-deletion 11 5))
+
+;; projects to "Test Test"

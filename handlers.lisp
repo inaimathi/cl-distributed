@@ -1,6 +1,6 @@
 (in-package #:cl-distributed)
 
-(defparameter *arc* (mk-archive ""))
+(defparameter *arc* (mk-archive "" :file "test.arc"))
 
 (define-handler (document/source :close-socket? nil) ()
   (subscribe! :updates sock)

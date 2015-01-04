@@ -7,5 +7,6 @@
   :license "Specify license here"
   :depends-on (#:cl-history #:house #:parenscript #:cl-who)
   :components ((:file "package")
-               (:file "cl-distributed")))
+               (:file "cl-distributed")
+	       (:file "handlers")))
 
