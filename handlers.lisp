@@ -7,21 +7,36 @@
   :ok)
 
 (define-json-handler (document/show) ()
+  (unless (lookup :user session)
+    (setf (lookup :user session) (gensym)))
   `((:id . ,(current-id *arc*))
     (:body . ,(current *arc*))
-    (:user . ,(gensym))))
+    (:user . ,(lookup :user session))))
 
 (defun json-plist (&rest plist) (cl-json:encode-json-plist-to-string plist))
 
-(define-json-handler (document/insert) ((user :keyword) (id :integer (>= id 0)) (ix :integer (>= ix 0)) (text :string (> (length text) 0)))
+(define-json-handler (document/insert) ((id :integer (>= id 0)) (ix :integer (>= ix 0)) (text :string (> (length text) 0)))
   (update! *arc* id (mk-insertion ix text))
-  (publish! :updates (make-sse (json-plist :user user :id (current-id *arc*) :ix ix :text text) :event "insert"))
+  (publish! 
+   :updates 
+   (make-sse
+    (json-plist 
+     :user (lookup :user session)
+     :id (current-id *arc*)
+     :ix ix :text text)
+    :event "insert"))
   (current-id *arc*))
 
-(define-json-handler (document/delete) ((user :keyword) (id :integer (>= id 0)) (ix :integer (>= ix 0)) (ct :integer (> ct 0)))
+(define-json-handler (document/delete) ((id :integer (>= id 0)) (ix :integer (>= ix 0)) (ct :integer (> ct 0)))
   (update! *arc* id (mk-deletion ix ct))
-  (publish! :updates (make-sse (json-plist :user user :id (current-id *arc*) :ix ix :ct ct)
-			       :event "delete"))
+  (publish! 
+   :updates 
+   (make-sse 
+    (json-plist 
+     :user (lookup :user session) 
+     :id (current-id *arc*) 
+     :ix ix :ct ct)
+    :event "delete"))
   (current-id *arc*))
 
 ;;;;;;;;;; Front-end
@@ -40,39 +55,46 @@
 
       (defun doc/delete! (ix ct)
 	(post/json
-	 "/document/delete" (create :user *my-id* :id (@ *doc* id) :ix ix :ct ct)
+	 "/document/delete" (create :id (@ *doc* id) :ix ix :ct ct)
 	 (lambda (res)
 	   (console.log "NEW ID" res)
 	   (store-edit! res (create :type :delete :id res :ix ix :ct ct)))))
 
       (defun doc/insert! (ix text)
 	(post/json 
-	 "/document/insert" (create :user *my-id* :id (@ *doc* id) :ix ix :text text)
+	 "/document/insert" (create :id (@ *doc* id) :ix ix :text text)
 	 (lambda (res)
 	   (console.log "NEW ID" res)
 	   (store-edit! res (create :type :insert :id res :ix ix :text text)))))
+
+      (defun ev (fn)
+	(lambda (res)
+	  (let ((id (@ res id)))
+	    (when (> id (@ *doc* id))
+	      (console.log "New id" id res)
+	      (unless (equal (@ res user) *my-id*) (fn res))
+	      (sync-id! id)))))
 
       (defun doc-events (editor)
 	(json-event-source
 	 "/document/source"
 	 (create
-	  "insert" (lambda (res)
-		     (let ((id (@ res id)))
-		       (when (> id (@ *doc* id))
-			 (console.log "New id" id res)
-			 (unless (equal (@ res user) *my-id*)
-			   (chain editor (replace-range (@ res text) (create :line 0 :ch (@ res ix))
-							nil "server-synch")))
-			 (sync-id! id))))
-	  "delete" (lambda (res id)
-		     (let ((id (@ res id)))
-		       (when (> id (@ *doc* id))
-			 (console.log "New id" id res)
-			 (unless (equal (@ res user) *my-id*)
-			   (chain editor (replace-range "" (create :line 0 :ch (@ res ix)) 
-							(create :line 0 :ch (+ (@ res ix) (@ res ct)))
-							"server-synch")))
-			 (sync-id! id)))))))
+	  "insert" (ev 
+		    (lambda (res)
+		      (chain 
+		       editor 
+		       (replace-range 
+			(@ res text)
+			(create :line 0 :ch (@ res ix))
+			nil "server-synch"))))
+	  "delete" (ev
+		    (lambda (res)
+		      (chain
+		       editor
+		       (replace-range 
+			"" (create :line 0 :ch (@ res ix)) 
+			(create :line 0 :ch (+ (@ res ix) (@ res ct)))
+			"server-synch")))))))
 
       (dom-ready 
        (lambda ()
