@@ -3,7 +3,8 @@
 (in-package #:cl-distributed)
 
 ;;;;;;;;;; Classes, creation and copying
-(defclass edit () ((ix :reader ix :initarg :ix)))
+(defclass edit () 
+  ((ix :reader ix :initarg :ix)))
 (defclass insertion (edit)
   ((len :reader len :initarg :len)
    (text :reader text :initarg :text)))

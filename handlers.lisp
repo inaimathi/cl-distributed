@@ -82,20 +82,20 @@
 	 (create
 	  "insert" (ev 
 		    (lambda (res)
-		      (chain 
-		       editor 
-		       (replace-range 
-			(@ res text)
-			(create :line 0 :ch (@ res ix))
-			nil "server-synch"))))
+		      (let* ((val (chain editor (get-value)))
+			     (mod (+ (chain val (substr 0 (@ res ix)))
+				     (@ res text)
+				     (chain val (substr (@ res ix))))))
+			(chain editor (set-value mod)))))
 	  "delete" (ev
 		    (lambda (res)
-		      (chain
-		       editor
-		       (replace-range 
-			"" (create :line 0 :ch (@ res ix)) 
-			(create :line 0 :ch (+ (@ res ix) (@ res ct)))
-			"server-synch")))))))
+		      (let* ((val (chain editor (get-value)))
+			     (mod (+ (chain val (substr 0 (@ res ix)))
+				     (chain val (substr (+ (@ res ix) (@ res ct)))))))
+			(chain editor (set-value mod))))))))
+
+      (defun cm-ix (ed from)
+	(length (chain ed (get-range (create :ch 0 :line 0) from))))
 
       (dom-ready 
        (lambda ()
@@ -116,21 +116,23 @@
 	       editor 
 	       (on 'change
 		   (lambda (mirror change)
-		     (case (@ change origin)
-		       ("+delete"
-			(console.log "DELETION" change)
-			(doc/delete! (@ change from ch) (length (join (@ change removed) #\newline))))
-		       ("+input"
-			(console.log "INSERTION" change)
-			(doc/insert! (@ change from ch) (join (@ change text) #\newline)))
-		       ("cut"
-			(console.log "CUT" change)
-			(doc/delete! (@ change from ch) (length (join (@ change removed) #\newline))))
-		       ("paste"
-			(console.log "PASTE" change)
-			(doc/insert! (@ change from ch) (join (@ change text) #\newline)))
-		       ("server-synch" nil)
-		       (t (console.log "UNSUPPORTED CHANGE" change)))))))))))))
+		     (let ((ix (length (chain editor (get-range (create :ch 0 :line 0) (@ change from))))))
+		       (case (@ change origin)
+			 ("+delete"
+			  (console.log "DELETION" change ix)
+			  (doc/delete! ix (length (join (@ change removed) #\newline))))
+			 ("+input"
+			  (console.log "INSERTION" change ix)
+			  (doc/insert! ix (join (@ change text) #\newline)))
+			 ("cut"
+			  (console.log "CUT" change)
+			  (doc/delete! ix (length (join (@ change removed) #\newline))))
+			 ("paste"
+			  (console.log "PASTE" change ix)
+			  (doc/insert! ix (join (@ change text) #\newline)))
+			 ("server-synch" nil)
+			 ("setValue" nil)
+			 (t (console.log "UNSUPPORTED CHANGE" change))))))))))))))
 
 (define-handler (root) ()
   (with-html-output-to-string (s nil :prologue t :indent t)
