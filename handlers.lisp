@@ -43,23 +43,26 @@
 ;;;;;;;;;; Front-end
 (define-handler (js/distributed.js :content-type "text/javascript") ()
   (ps (defvar *editor* nil)
-      (defvar *doc* (create :my-edits (create)))
+      (defvar *doc* (create :my-edits (new (-array))))
       (defvar *my-id* nil)
       
       (defun store-edit! (id edit)
 	(when (> (@ *doc* id) id)
-	  (setf (aref *doc* :my-edits id) edit)))
+	  (chain (@ *doc* :my-edits) (push edit))))
       
       (defun sync-id! (id)
-	(setf (@ *doc* id) id)
-	(delete (aref *doc* :my-edits id)))
+	(setf (@ *doc* id) id))
 
-      (defun doc/delete! (ix ct)
+      (defun filter-locals! (id)
+	(setf (@ *doc* :my-edits) 
+	      (filter (lambda (ed) (> (@ ed id) id)) (@ *doc* :my-edits))))
+
+      (defun doc/delete! (ix text)
 	(post/json
-	 "/document/delete" (create :id (@ *doc* id) :ix ix :ct ct)
+	 "/document/delete" (create :id (@ *doc* id) :ix ix :ct (length text))
 	 (lambda (res)
 	   (console.log "NEW ID" res)
-	   (store-edit! res (create :type :delete :id res :ix ix :ct ct)))))
+	   (store-edit! res (create :type :delete :id res :ix ix :ct (length text) :text text)))))
 
       (defun doc/insert! (ix text)
 	(post/json 
@@ -72,9 +75,33 @@
 	(lambda (res)
 	  (let ((id (@ res id)))
 	    (when (> id (@ *doc* id))
-	      (console.log "New id" id res)
-	      (unless (equal (@ res user) *my-id*) (fn res))
+	      (unless (equal (@ res user) *my-id*)
+		(fn res))
 	      (sync-id! id)))))
+      
+      (defun apply-single-edit (body ed)
+	(if (eq :insert (@ ed type))
+	    (+ (chain body (susbstr 0 (@ ed ix)))
+	       (@ ed text)
+	       (chain body (substr (@ ed ix))))
+	    (+ (chain body (substr 0 (@ ed ix)))
+	       (chain val (substr (+ (@ ed ix) (@ ed ct)))))))
+
+      (defun reverse-single-edit (body ed)
+	(apply-single-edit 
+	 body (if (eq :insert (@ ed type))
+		  (create :type :delete :ix (@ ed ix) :ct (length (@ ed text)))
+		  (create :type :insert :ix (@ ed ix) :text (@ ed text)))))
+
+      (defun reverse-local-edits (body)
+	(fold (lambda (ed memo)
+		(reverse-single-edit memo v))
+	      body (@ *doc* :my-edits)))
+
+      (defun reapply-local-edits (body)
+	(fold (lambda (ed memo)
+		(apply-single-edit memo v))
+	      body (@ *doc* :my-edits)))
 
       (defun doc-events (editor)
 	(json-event-source
@@ -82,24 +109,27 @@
 	 (create
 	  "insert" (ev 
 		    (lambda (res)
-		      (let* ((val (chain editor (get-value)))
+		      (let* ((val (reverse-local-edits (chain editor (get-value))))
 			     (mod (+ (chain val (substr 0 (@ res ix)))
 				     (@ res text)
 				     (chain val (substr (@ res ix))))))
-			(chain editor (set-value mod)))))
+			(filter-locals! (@ res id))
+			(let ((new-val (reapply-local-edits mod)))
+			  (chain editor (set-value new-val))))))
 	  "delete" (ev
 		    (lambda (res)
 		      (let* ((val (chain editor (get-value)))
 			     (mod (+ (chain val (substr 0 (@ res ix)))
 				     (chain val (substr (+ (@ res ix) (@ res ct)))))))
-			(chain editor (set-value mod))))))))
+			(filter-locals! (@ res id))
+			(let ((new-val (reapply-local-edits mod)))
+			  (chain editor (set-value new-val)))))))))
 
       (defun cm-ix (ed from)
 	(length (chain ed (get-range (create :ch 0 :line 0) from))))
 
       (dom-ready 
        (lambda ()
-	 (console.log "Testing...")
 	 (post/json 
 	  "/document/show" (create)
 	  (lambda (res)
@@ -119,16 +149,12 @@
 		     (let ((ix (length (chain editor (get-range (create :ch 0 :line 0) (@ change from))))))
 		       (case (@ change origin)
 			 ("+delete"
-			  (console.log "DELETION" change ix)
-			  (doc/delete! ix (length (join (@ change removed) #\newline))))
+			  (doc/delete! ix (join (@ change removed) #\newline)))
 			 ("+input"
-			  (console.log "INSERTION" change ix)
 			  (doc/insert! ix (join (@ change text) #\newline)))
 			 ("cut"
-			  (console.log "CUT" change)
 			  (doc/delete! ix (length (join (@ change removed) #\newline))))
 			 ("paste"
-			  (console.log "PASTE" change ix)
 			  (doc/insert! ix (join (@ change text) #\newline)))
 			 ("server-synch" nil)
 			 ("setValue" nil)
