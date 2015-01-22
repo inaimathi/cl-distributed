@@ -30,7 +30,7 @@
   (if (zerop (ix ins))
       (concatenate 'string (text ins) text)
       (concatenate 'string 
-       (subseq text 0 (ix ins)) 
+       (subseq text 0 (min (ix ins) (- (length text) 1))) 
        (text ins)
        (ignore-errors (subseq text (ix ins))))))
 
@@ -38,7 +38,7 @@
   (if (zerop (ix del))
       (subseq text (ix del))
       (concatenate 'string 
-	(subseq text 0 (ix del))
+	(subseq text 0 (min (ix del) (- (length text) 1)))
 	(ignore-errors (subseq text (+ (ix del) (ct del)))))))
 
 (defmethod reconcile ((a deletion) (b deletion))
@@ -53,7 +53,6 @@
 	 (new-deletion a :ct (- (ct a) (ct b))))
 	((irrelevant? a b) a)
 	(t (bump a (- (ct b))))))
-
 (defmethod reconcile ((a deletion) (b insertion))
   (cond ((> (ix b) (+ (ix a) (ct a)))
 	 a)
@@ -61,13 +60,11 @@
 	 (bump a (len b)))
 	(t
 	 (new-deletion a :ct (+ (ct a) (len b))))))
-
 (defmethod reconcile ((a insertion) (b deletion))
   (cond ((eclipsed-by? a b) nil)
 	((>= (ix a) (ix b))
 	 (bump a (- (ct b))))
 	(t a)))
-
 (defmethod reconcile ((a edit) (b insertion))
   (if (>= (ix a) (ix b))
       (bump a (len b))
