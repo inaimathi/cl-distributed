@@ -17,27 +17,27 @@
   (cl-json:encode-json-plist-to-string plist))
 
 (define-json-handler (document/insert) ((id :integer (>= id 0)) (ix :integer (>= ix 0)) (text :string (> (length text) 0)))
-  (update! *arc* id (mk-insertion ix text))
-  (publish! 
-   :updates 
-   (make-sse
-    (json-plist 
-     :user (lookup :user session)
-     :id (current-id *arc*)
-     :ix ix :text text)
-    :event "insert"))
+  (let ((recd (update! *arc* id (mk-insertion ix text))))
+    (publish! 
+     :updates 
+     (make-sse
+      (json-plist 
+       :user (lookup :user session)
+       :id (current-id *arc*)
+       :ix (ix recd) :text (text recd))
+      :event "insert")))
   (current-id *arc*))
 
 (define-json-handler (document/delete) ((id :integer (>= id 0)) (ix :integer (>= ix 0)) (ct :integer (> ct 0)))
-  (update! *arc* id (mk-deletion ix ct))
-  (publish! 
-   :updates 
-   (make-sse 
-    (json-plist 
-     :user (lookup :user session) 
-     :id (current-id *arc*) 
-     :ix ix :ct ct)
-    :event "delete"))
+  (let ((recd (update! *arc* id (mk-deletion ix ct))))
+    (publish! 
+     :updates 
+     (make-sse 
+      (json-plist 
+       :user (lookup :user session) 
+       :id (current-id *arc*) 
+       :ix (ix recd) :ct (ct recd))
+      :event "delete")))
   (current-id *arc*))
 
 ;;;;;;;;;; Front-end
@@ -73,11 +73,20 @@
 
       (defun ev (fn)
 	(lambda (res)
-	  (let ((id (@ res id)))
-	    (when (> id (@ *doc* id))
-	      (unless (equal (@ res user) *my-id*)
-		(fn res))
-	      (sync-id! id)))))
+	  (chain *editor*
+		 (operation 
+		  (lambda ()
+		    (let ((id (@ res id))
+			  (cur (chain *editor* (get-cursor))))
+		      (dom-set (by-selector "#cur-id") id)
+		      (dom-append 
+		       (by-selector "ul#events")
+		       (who-ps-html (:li (obj->string res))))
+		      (when (> id (@ *doc* id))
+			(unless (equal (@ res user) *my-id*)
+			  (fn res))
+			(chain *editor* (set-cursor cur))
+			(sync-id! id))))))))
       
       (defun apply-single-edit (body ed)
 	(if (eq :insert (@ ed type))
@@ -94,9 +103,8 @@
 		  (create :type :insert :ix (@ ed ix) :text (@ ed text)))))
 
       (defun reverse-local-edits (body)
-	(fold (lambda (ed memo)
-		(reverse-single-edit memo v))
-	      body (@ *doc* :my-edits)))
+	(fold (lambda (ed memo) (reverse-single-edit memo v))
+	      body (reversed (@ *doc* :my-edits))))
 
       (defun reapply-local-edits (body)
 	(fold (lambda (ed memo)
@@ -135,6 +143,7 @@
 	  (lambda (res)
 	    (let* ((textarea (by-selector "#editor"))
 		   (editor (chain -code-mirror (from-text-area textarea))))
+	      (dom-set (by-selector "#cur-id") (@ res id))
 	      (setf *editor* editor
 		    (@ *doc* id) (@ res id)
 		    (@ *doc* body) (@ res body)
@@ -193,7 +202,9 @@
       (:script :type "text/javascript" :src "/static/js/addons/runmode/runmode.js"))
 
      (:body
-      (:textarea :id "editor" :style "width: 90%; height: 560px;")))))
+      (:textarea :id "editor" :style "width: 90%; height: 560px;")
+      (:p "Current: " (:span :id "cur-id" 0))
+      (:ul :id "events")))))
 
 (define-handler (js/base.js :content-type "application/javascript") ()
   (ps 
@@ -206,6 +217,10 @@
     (defun constantly (thing) (lambda () thing))
 
     (defun rest (array) (chain array (slice 1)))
+
+    (defun reversed (array)
+      (loop for i from (- (length array) 1) downto 0
+	 collect (aref array i)))
 
     (defun map (fn thing)
       (if (object? thing)
@@ -468,4 +483,5 @@
 ;;;;;;;;;; Static
 (define-file-handler "/home/inaimathi/quicklisp/local-projects/cl-distributed/static/" :stem-from "static")
 
-(start 4343)
+;; (start 4343)
+
